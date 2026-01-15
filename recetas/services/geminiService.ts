@@ -3,38 +3,45 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Recipe, Preferences } from "../types";
 
 /**
- * Utility to clean potential Markdown blocks from the model's response.
+ * Limpia bloques de código Markdown si el modelo los incluye por error.
  */
 function cleanJson(text: string): string {
+  if (!text) return "";
   return text.replace(/```json/g, "").replace(/```/g, "").trim();
 }
 
 /**
- * Extracts the MIME type and data from a base64 string.
+ * Procesa un string Base64 para extraer el MIME type y los datos puros.
  */
-function parseBase64(base64: string) {
-  const match = base64.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
-  if (!match) return { mimeType: 'image/jpeg', data: base64 };
-  return { mimeType: match[1], data: match[2] };
+function processImageData(base64: string) {
+  // Manejo robusto de esquemas data:image/xxx;base64,
+  const parts = base64.split(",");
+  const data = parts.length > 1 ? parts[1] : parts[0];
+  const mimeMatch = base64.match(/data:([^;]+);/);
+  const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+  return { mimeType, data };
 }
 
 export async function analyzeIngredients(base64Images: string[]): Promise<string[]> {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API_KEY no encontrada");
+  if (!apiKey) {
+    console.error("CRÍTICO: API_KEY no configurada en el entorno.");
+    throw new Error("API_KEY no encontrada");
+  }
   
   const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-3-flash-preview';
   
   const imageParts = base64Images.map(base64 => {
-    const { mimeType, data } = parseBase64(base64);
+    const { mimeType, data } = processImageData(base64);
     return {
       inlineData: { data, mimeType },
     };
   });
 
-  const prompt = `Analiza estas fotos. Identifica todos los ingredientes de cocina visibles (frutas, verduras, carnes, lácteos, etc.). 
-  Devuelve una lista limpia en español. 
-  Responde ÚNICAMENTE con el JSON solicitado.`;
+  const prompt = `Analiza estas fotos de ingredientes. Identifica todos los alimentos visibles (frutas, verduras, carnes, lácteos, sobras, etc.). 
+  Devuelve una lista simple en español. 
+  Responde estrictamente en formato JSON con la estructura: {"ingredients": ["nombre1", "nombre2"]}.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -55,11 +62,17 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
       }
     });
 
-    const cleanedText = cleanJson(response.text || '{"ingredients":[]}');
+    const rawText = response.text;
+    console.log("Gemini Response (Analysis):", rawText);
+    const cleanedText = cleanJson(rawText || '{"ingredients":[]}');
     const data = JSON.parse(cleanedText);
     return data.ingredients || [];
-  } catch (error) {
-    console.error("Gemini Analysis Error:", error);
+  } catch (error: any) {
+    console.error("Error en analyzeIngredients:", error);
+    // Si es un error de cuota o clave, lo registramos específicamente
+    if (error.message?.includes("API key not valid")) {
+      console.error("La API KEY proporcionada no es válida.");
+    }
     throw error;
   }
 }
@@ -71,15 +84,16 @@ export async function generateRecipes(ingredients: string[], prefs: Preferences)
   const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-3-pro-preview';
   
-  const prompt = `Chef experto. Tengo estos ingredientes: ${ingredients.join(', ')}.
+  const prompt = `Como chef profesional, crea 2 o 3 recetas usando estos ingredientes: ${ingredients.join(', ')}.
   
-  Genera 2 o 3 recetas REALISTAS.
-  - Usa los ingredientes detectados.
-  - Puedes añadir básicos: sal, aceite, agua, pimienta, harina, azúcar.
-  - Ajustes: ${prefs.servings} personas, ${prefs.vegetarian ? 'Vegetariano' : 'Cualquier dieta'}.
-  - Excluir: ${prefs.allergies || 'ninguno'}.
+  REGLAS:
+  - Prioriza los ingredientes de la lista.
+  - Puedes asumir básicos: sal, aceite, agua, pimienta.
+  - Personas: ${prefs.servings}.
+  - Preferencias: ${prefs.vegetarian ? 'Vegetariano' : 'Cualquiera'}.
+  - Alergias/Exclusiones: ${prefs.allergies || 'Ninguna'}.
   
-  Responde solo con el JSON.`;
+  Responde solo con el JSON de las recetas.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -125,10 +139,12 @@ export async function generateRecipes(ingredients: string[], prefs: Preferences)
       }
     });
 
-    const cleanedText = cleanJson(response.text || '[]');
+    const rawText = response.text;
+    console.log("Gemini Response (Recipes):", rawText);
+    const cleanedText = cleanJson(rawText || '[]');
     return JSON.parse(cleanedText);
   } catch (error) {
-    console.error("Gemini Generation Error:", error);
+    console.error("Error en generateRecipes:", error);
     throw error;
   }
 }
