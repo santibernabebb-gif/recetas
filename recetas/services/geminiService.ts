@@ -1,103 +1,129 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { Recipe, Preferences } from "../types";
+import { BudgetData } from "../types";
 
-function cleanJson(text: string): string {
-  if (!text) return "";
-  return text.replace(/```json/g, "").replace(/```/g, "").trim();
-}
+// En Vite (y Cloudflare Pages), las variables de entorno del cliente deben ir con prefijo VITE_
+// y se leen con import.meta.env
+const getApiKey = (): string => {
+  const apiKey = (import.meta as any).env?.VITE_API_KEY as string | undefined;
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error(
+      "Falta VITE_API_KEY. Configúrala en .env.local (VITE_API_KEY=...) y/o en Cloudflare Pages → Settings → Environment variables."
+    );
+  }
+  return apiKey.trim();
+};
 
-function processImageData(base64: string) {
-  const parts = base64.split(",");
-  const data = parts.length > 1 ? parts[1] : parts[0];
-  const mimeMatch = base64.match(/data:([^;]+);/);
-  const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
-  return { mimeType, data };
-}
-
-export async function analyzeIngredients(base64Images: string[]): Promise<string[]> {
-  // Uso directo de process.env.API_KEY como en el proyecto de Presupuestos
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  const imageParts = base64Images.map(base64 => {
-    const { mimeType, data } = processImageData(base64);
-    return { inlineData: { data, mimeType } };
-  });
-
-  const prompt = "Analiza estas imágenes de cocina. Identifica todos los ingredientes individuales que veas. Responde exclusivamente en formato JSON con la estructura: {\"ingredients\": [\"nombre\", ...]}";
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: { parts: [...imageParts, { text: prompt }] },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
+const budgetSchema = {
+  type: Type.OBJECT,
+  properties: {
+    client: { type: Type.STRING, description: "Nombre del cliente" },
+    date: { type: Type.STRING, description: "Fecha (DD/MM/AAAA)" },
+    lines: {
+      type: Type.ARRAY,
+      items: {
         type: Type.OBJECT,
         properties: {
-          ingredients: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          }
+          description: { type: Type.STRING, description: "Descripción del trabajo" },
+          units: { type: Type.NUMBER, description: "Cantidad numérica" },
+          unitPrice: { type: Type.NUMBER, description: "Precio unitario" }
         },
-        required: ["ingredients"]
+        required: ["description"]
       }
     }
-  });
+  },
+  required: ["client", "date", "lines"]
+};
 
-  const text = response.text || "{}";
-  const data = JSON.parse(cleanJson(text));
-  return data.ingredients || [];
-}
+export const extractBudgetData = async (base64Image: string): Promise<BudgetData> => {
+  // Inicialización fresca en cada llamada para asegurar que se usa la API KEY más reciente del entorno.
+  const ai = new GoogleGenAI({ apiKey: getApiKey() });
+  const model = "gemini-3-flash-preview";
 
-export async function generateRecipes(ingredients: string[], prefs: Preferences): Promise<Recipe[]> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  const prompt = `Como chef profesional de Santisystems, crea 3 recetas creativas usando estos ingredientes: ${ingredients.join(', ')}. 
-  Para ${prefs.servings} personas. Dieta: ${prefs.vegetarian ? 'Vegetariana' : 'Libre'}. Alergias: ${prefs.allergies || 'Ninguna'}.
-  Asegúrate de que los pasos sean claros y añade un tip de cocina útil.`;
+  const prompt = `
+    Analiza este presupuesto manuscrito y devuelve un JSON puro.
+    REQUISITOS:
+    - Extrae el cliente y la fecha (hoy si no hay).
+    - Crea una lista de partidas con descripción, unidades y precio.
+    - Si no hay unidades o precio, usa 0.
+    - No inventes filas vacías.
+    - RESPONDE SOLO CON EL JSON.
+  `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            name: { type: Type.STRING },
-            time: { type: Type.STRING },
-            difficulty: { type: Type.STRING, enum: ["fácil", "media"] },
-            servings: { type: Type.NUMBER },
-            ingredients: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  hasIt: { type: Type.BOOLEAN }
-                },
-                required: ["name", "hasIt"]
-              }
-            },
-            missingIngredients: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            steps: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            tips: { type: Type.STRING }
-          },
-          required: ["id", "name", "time", "difficulty", "servings", "ingredients", "missingIngredients", "steps"]
-        }
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: {
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: base64Image.includes(",") ? base64Image.split(",")[1] : base64Image
+            }
+          }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: budgetSchema,
+        temperature: 0.1
       }
-    }
-  });
+    });
 
-  const text = response.text || "[]";
-  return JSON.parse(cleanJson(text));
-}
+    if (!response || !response.text) {
+      throw new Error("La IA no devolvió contenido.");
+    }
+
+    let cleanJson = response.text.trim();
+    if (cleanJson.startsWith("```")) {
+      cleanJson = cleanJson.replace(/^```json/, "").replace(/```$/, "").trim();
+    }
+
+    const rawData = JSON.parse(cleanJson);
+
+    let subtotal = 0;
+    const processedLines = rawData.lines
+      .filter((l: any) => l.description && l.description.trim() !== "")
+      .map((line: any) => {
+        const units = parseFloat(line.units) || 0;
+        const unitPrice = parseFloat(line.unitPrice) || 0;
+        const totalPrice = units * unitPrice;
+        subtotal += totalPrice;
+        return {
+          description: String(line.description).toUpperCase(),
+          units: units > 0 ? units : undefined,
+          unitPrice: unitPrice > 0 ? unitPrice : undefined,
+          totalPrice: totalPrice > 0 ? totalPrice : undefined
+        };
+      });
+
+    const iva = subtotal * 0.21;
+    const total = subtotal + iva;
+    const budgetNumber = `LQ-${Date.now().toString().slice(-6)}`;
+
+    return {
+      budgetNumber,
+      client: (rawData.client || "CLIENTE").toUpperCase(),
+      date: rawData.date || new Date().toLocaleDateString("es-ES"),
+      lines: processedLines,
+      subtotal,
+      iva,
+      total
+    };
+  } catch (error: any) {
+    console.error("DEBUG IA:", error);
+
+    if (error instanceof SyntaxError) {
+      throw new Error(
+        "Error de formato: La IA no pudo generar un JSON válido. Reintenta con otra foto."
+      );
+    }
+
+    // Mensaje más claro si falta la clave
+    if (String(error?.message || "").includes("VITE_API_KEY")) {
+      throw error;
+    }
+
+    throw new Error(error.message || "Error de conexión con la IA.");
+  }
+};
