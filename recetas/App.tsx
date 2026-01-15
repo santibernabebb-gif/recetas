@@ -40,9 +40,9 @@ const App: React.FC = () => {
       ingredients,
       recipes: generated
     };
-    const updated = [newItem, ...history].slice(0, 10);
-    setHistory(updated);
-    localStorage.setItem('santisystems_history', JSON.stringify(updated));
+    setHistory(prev => [newItem, ...prev].slice(0, 10));
+    const savedHistory = JSON.parse(localStorage.getItem('santisystems_history') || '[]');
+    localStorage.setItem('santisystems_history', JSON.stringify([newItem, ...savedHistory].slice(0, 10)));
   };
 
   const handleAnalyze = async () => {
@@ -138,7 +138,7 @@ const App: React.FC = () => {
                     className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newIngredient.trim()) {
-                        setDetectedIngredients([...detectedIngredients, newIngredient.trim()]);
+                        setDetectedIngredients(prev => [...prev, newIngredient.trim()]);
                         setNewIngredient('');
                       }
                     }}
@@ -150,12 +150,24 @@ const App: React.FC = () => {
                 <h2 className="font-bold text-slate-800">Preferencias</h2>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex items-center gap-2 p-3 border rounded-xl cursor-pointer">
-                    <input type="checkbox" checked={preferences.vegetarian} onChange={(e) => setPreferences({ ...preferences, vegetarian: e.target.checked })} className="w-5 h-5 accent-emerald-600"/>
+                    <input 
+                      type="checkbox" 
+                      checked={preferences.vegetarian} 
+                      onChange={(e) => setPreferences(prev => ({ ...prev, vegetarian: e.target.checked }))} 
+                      className="w-5 h-5 accent-emerald-600"
+                    />
                     <span className="text-sm">Vegetariano</span>
                   </label>
                   <div className="p-3 border rounded-xl">
                     <span className="text-xs text-slate-500 block mb-1">Comensales: {preferences.servings}</span>
-                    <input type="range" min="1" max="8" value={preferences.servings} onChange={(e) => setPreferences({ ...preferences, servings: parseInt(e.target.value) })} className="w-full accent-emerald-600"/>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="8" 
+                      value={preferences.servings} 
+                      onChange={(e) => setPreferences(prev => ({ ...prev, servings: parseInt(e.target.value) }))} 
+                      className="w-full accent-emerald-600"
+                    />
                   </div>
                 </div>
               </div>
@@ -213,9 +225,11 @@ const App: React.FC = () => {
             }
           }} 
           onDeleteItem={(id) => {
-            const u = history.filter(i => i.id !== id); 
-            setHistory(u); 
-            localStorage.setItem('santisystems_history', JSON.stringify(u));
+            setHistory(prev => {
+              const u = prev.filter(i => i.id !== id);
+              localStorage.setItem('santisystems_history', JSON.stringify(u));
+              return u;
+            });
           }} 
         />
       )}

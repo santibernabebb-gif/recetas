@@ -4,7 +4,6 @@ import { Recipe, Preferences } from "../types";
 
 function cleanJson(text: string): string {
   if (!text) return "";
-  // Elimina bloques de código markdown si los hay
   return text.replace(/```json/g, "").replace(/```/g, "").trim();
 }
 
@@ -17,7 +16,7 @@ function processImageData(base64: string) {
 }
 
 export async function analyzeIngredients(base64Images: string[]): Promise<string[]> {
-  // Inicialización directa tal cual se requiere en el entorno
+  // Uso directo de process.env.API_KEY como en el proyecto de Presupuestos
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const imageParts = base64Images.map(base64 => {
