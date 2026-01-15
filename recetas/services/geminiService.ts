@@ -5,7 +5,7 @@ import { Recipe, Preferences } from "../types";
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
- * Analyzes images to detect food ingredients.
+ * Analiza las imágenes para detectar ingredientes de forma precisa.
  */
 export async function analyzeIngredients(base64Images: string[]): Promise<string[]> {
   const model = 'gemini-3-flash-preview';
@@ -17,9 +17,10 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
     },
   }));
 
-  const prompt = `Analiza estas fotos de una nevera o despensa. Identifica todos los ingredientes de comida visibles de forma individual. 
-  Devuelve una lista limpia de ingredientes en español. Ignora marcas, céntrate solo en el alimento.
-  Sé preciso: si ves sobras en un tupper, intenta identificar qué son (ej: arroz cocido, pollo asado).`;
+  const prompt = `Analiza detalladamente estas fotos de una nevera, despensa o encimera. 
+  Identifica todos los ingredientes visibles (frutas, verduras, carnes, lácteos, sobras, etc.).
+  Devuelve solo una lista de nombres de alimentos en español. 
+  Sé muy específico: si ves algo cocinado, identifica qué plato parece ser.`;
 
   const response = await ai.models.generateContent({
     model,
@@ -44,20 +45,19 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
 }
 
 /**
- * Generates 2-3 recipes based on ingredients and preferences.
- * Uses Gemini 3 Pro for advanced reasoning and coherence.
+ * Genera recetas estrictamente coherentes con los ingredientes detectados.
  */
 export async function generateRecipes(ingredients: string[], prefs: Preferences): Promise<Recipe[]> {
   const model = 'gemini-3-pro-preview';
   
-  const prompt = `Eres un chef experto en "cocina de aprovechamiento" y gastronomía mediterránea. 
-  Tu misión es crear recetas COHERENTES y REALISTAS utilizando EXCLUSIVAMENTE o PRIORITARIAMENTE estos ingredientes: ${ingredients.join(', ')}.
+  const prompt = `Eres un chef experto en "cocina de realidad". Tengo estos ingredientes EXACTOS detectados en mis fotos: ${ingredients.join(', ')}.
 
-  REGLAS CRÍTICAS DE COHERENCIA:
-  1. Si los ingredientes son limitados (ej: solo huevos y pan), sugiere platos lógicos (ej: tostadas francesas, huevos pasados por agua).
-  2. No sugieras recetas que requieran ingredientes principales que NO están en la lista.
-  3. Puedes asumir básicos de despensa: sal, pimienta, aceite, agua.
-  4. Ajusta las recetas a estas preferencias: 
+  INSTRUCCIÓN DE COHERENCIA OBLIGATORIA:
+  1. Crea recetas que utilicen como base PRINCIPAL los ingredientes mencionados.
+  2. No inventes ingredientes complejos que no están en la lista (ej: no pidas aguacate si no se ve en las fotos).
+  3. Puedes usar básicos: sal, aceite, azúcar, harina, agua, especias comunes.
+  4. Si los ingredientes son muy pocos, sugiere preparaciones simples pero creativas.
+  5. Ajusta a estas preferencias:
      - Comensales: ${prefs.servings}
      - Alergias: ${prefs.allergies || 'Ninguna'}
      - Rápida (<=20min): ${prefs.quick ? 'Sí' : 'No'}
@@ -65,7 +65,7 @@ export async function generateRecipes(ingredients: string[], prefs: Preferences)
      - Sin horno: ${prefs.noOven ? 'Sí' : 'No'}
      - Vegetariano: ${prefs.vegetarian ? 'Sí' : 'No'}
 
-  Devuelve entre 2 y 3 opciones en formato JSON.`;
+  Responde solo con el JSON de las recetas.`;
 
   const response = await ai.models.generateContent({
     model,
