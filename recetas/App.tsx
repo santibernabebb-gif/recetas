@@ -8,8 +8,6 @@ import { analyzeIngredients, generateRecipes } from './services/geminiService';
 import { Recipe, Preferences, HistoryItem } from './types';
 
 const App: React.FC = () => {
-  // Empezamos asumiendo que la clave está presente para no bloquear al usuario
-  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'main' | 'history'>('main');
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,16 +27,6 @@ const App: React.FC = () => {
     if (saved) setHistory(JSON.parse(saved));
   }, []);
 
-  const handleOpenKeySelector = async () => {
-    // @ts-ignore
-    if (window.aistudio?.openSelectKey) {
-      // @ts-ignore
-      await window.aistudio.openSelectKey();
-    }
-    setHasApiKey(true);
-    setError(null);
-  };
-
   const saveToHistory = (ingredients: string[], generated: Recipe[]) => {
     const newItem: HistoryItem = {
       id: Math.random().toString(36).substr(2, 9),
@@ -54,20 +42,15 @@ const App: React.FC = () => {
   const handleAnalyze = async () => {
     if (images.length === 0) return;
     setLoading(true);
-    setLoadingMsg('Analizando fotos con IA...');
+    setLoadingMsg('Santisystems analizando tus fotos...');
     setError(null);
     try {
       const detected = await analyzeIngredients(images);
       setDetectedIngredients(detected);
       setEditingIngredients(true);
     } catch (err: any) {
-      console.error("Error capturado:", err);
-      // Solo si el error es explícitamente de falta de clave, mostramos el selector
-      if (err.message?.toLowerCase().includes("api key") || err.message?.includes("403")) {
-        setHasApiKey(false);
-      } else {
-        setError(err.message || 'Error al conectar con la IA. Revisa tu conexión.');
-      }
+      console.error("Error en análisis:", err);
+      setError(err.message || 'Error al conectar con la IA. Asegúrate de tener conexión.');
     } finally {
       setLoading(false);
     }
@@ -76,7 +59,7 @@ const App: React.FC = () => {
   const handleGenerate = async () => {
     if (detectedIngredients.length === 0) return;
     setLoading(true);
-    setLoadingMsg('Creando recetas únicas...');
+    setLoadingMsg('Creando recetas exclusivas para ti...');
     setError(null);
     try {
       const generated = await generateRecipes(detectedIngredients, preferences);
@@ -84,11 +67,8 @@ const App: React.FC = () => {
       saveToHistory(detectedIngredients, generated);
       setEditingIngredients(false);
     } catch (err: any) {
-      if (err.message?.toLowerCase().includes("api key")) {
-        setHasApiKey(false);
-      } else {
-        setError('No se pudieron generar las recetas. Prueba de nuevo.');
-      }
+      console.error("Error en generación:", err);
+      setError('No se pudieron generar las recetas en este momento.');
     } finally {
       setLoading(false);
     }
@@ -104,27 +84,7 @@ const App: React.FC = () => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {!hasApiKey ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center space-y-6 animate-in">
-          <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold text-slate-800">Clave API necesaria</h2>
-            <p className="text-sm text-slate-500 max-w-xs mx-auto">
-              Aunque la clave esté configurada en el entorno, el navegador requiere una confirmación manual o una clave válida de Google AI Studio.
-            </p>
-          </div>
-          <button 
-            onClick={handleOpenKeySelector}
-            className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg hover:bg-emerald-700 transition-all"
-          >
-            Configurar Clave Ahora
-          </button>
-        </div>
-      ) : activeTab === 'main' ? (
+      {activeTab === 'main' ? (
         <div className="space-y-8 animate-in">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-6">
@@ -160,7 +120,7 @@ const App: React.FC = () => {
                     type="text" 
                     value={newIngredient} 
                     onChange={(e) => setNewIngredient(e.target.value)}
-                    placeholder="Añadir manual..."
+                    placeholder="Añadir ingrediente manual..."
                     className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newIngredient.trim()) {
@@ -207,6 +167,9 @@ const App: React.FC = () => {
 
           {error && (
             <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 text-sm font-medium flex items-center gap-3">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
               <p>{error}</p>
             </div>
           )}

@@ -16,9 +16,7 @@ function processImageData(base64: string) {
 }
 
 export async function analyzeIngredients(base64Images: string[]): Promise<string[]> {
-  // Crear instancia justo antes de la llamada para asegurar que toma la API_KEY del entorno
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const modelName = 'gemini-3-flash-preview';
   
   const imageParts = base64Images.map(base64 => {
     const { mimeType, data } = processImageData(base64);
@@ -28,7 +26,7 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
   const prompt = `Analiza estas fotos de comida. Lista los ingredientes visibles de forma genérica. Responde exclusivamente con un objeto JSON: {"ingredients": ["nombre1", "nombre2"]}`;
 
   const response = await ai.models.generateContent({
-    model: modelName,
+    model: 'gemini-3-flash-preview',
     contents: { parts: [...imageParts, { text: prompt }] },
     config: {
       responseMimeType: "application/json",
@@ -45,21 +43,20 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
     }
   });
 
-  const text = response.text;
+  const text = response.text || "{}";
   const data = JSON.parse(cleanJson(text));
   return data.ingredients || [];
 }
 
 export async function generateRecipes(ingredients: string[], prefs: Preferences): Promise<Recipe[]> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const modelName = 'gemini-3-flash-preview';
   
   const prompt = `Actúa como chef experto. Sugiere 2 o 3 recetas usando estos ingredientes: ${ingredients.join(', ')}. 
   Comensales: ${prefs.servings}. Dieta: ${prefs.vegetarian ? 'Vegetariana' : 'Cualquiera'}. Alergias: ${prefs.allergies}.
   Responde estrictamente con un array JSON de recetas siguiendo el formato solicitado.`;
 
   const response = await ai.models.generateContent({
-    model: modelName,
+    model: 'gemini-3-flash-preview',
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -100,5 +97,6 @@ export async function generateRecipes(ingredients: string[], prefs: Preferences)
     }
   });
 
-  return JSON.parse(cleanJson(response.text));
+  const text = response.text || "[]";
+  return JSON.parse(cleanJson(text));
 }
