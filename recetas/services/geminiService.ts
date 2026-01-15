@@ -2,12 +2,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Recipe, Preferences } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 /**
  * Analiza las imágenes para detectar ingredientes de forma precisa.
  */
 export async function analyzeIngredients(base64Images: string[]): Promise<string[]> {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) throw new Error("API_KEY no configurada");
+  
+  const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-3-flash-preview';
   
   const imageParts = base64Images.map(base64 => ({
@@ -17,10 +19,10 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
     },
   }));
 
-  const prompt = `Analiza detalladamente estas fotos de una nevera, despensa o encimera. 
-  Identifica todos los ingredientes visibles (frutas, verduras, carnes, lácteos, sobras, etc.).
-  Devuelve solo una lista de nombres de alimentos en español. 
-  Sé muy específico: si ves algo cocinado, identifica qué plato parece ser.`;
+  const prompt = `Analiza estas fotos de ingredientes. 
+  Identifica los alimentos de forma individual. 
+  Devuelve una lista limpia en español. 
+  Sé preciso con lo que ves (ej: si ves medio limón, pon 'limón').`;
 
   const response = await ai.models.generateContent({
     model,
@@ -40,7 +42,7 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
     }
   });
 
-  const data = JSON.parse(response.text);
+  const data = JSON.parse(response.text || '{"ingredients":[]}');
   return data.ingredients || [];
 }
 
@@ -48,24 +50,22 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
  * Genera recetas estrictamente coherentes con los ingredientes detectados.
  */
 export async function generateRecipes(ingredients: string[], prefs: Preferences): Promise<Recipe[]> {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) throw new Error("API_KEY no configurada");
+
+  const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-3-pro-preview';
   
-  const prompt = `Eres un chef experto en "cocina de realidad". Tengo estos ingredientes EXACTOS detectados en mis fotos: ${ingredients.join(', ')}.
-
-  INSTRUCCIÓN DE COHERENCIA OBLIGATORIA:
-  1. Crea recetas que utilicen como base PRINCIPAL los ingredientes mencionados.
-  2. No inventes ingredientes complejos que no están en la lista (ej: no pidas aguacate si no se ve en las fotos).
-  3. Puedes usar básicos: sal, aceite, azúcar, harina, agua, especias comunes.
-  4. Si los ingredientes son muy pocos, sugiere preparaciones simples pero creativas.
-  5. Ajusta a estas preferencias:
-     - Comensales: ${prefs.servings}
-     - Alergias: ${prefs.allergies || 'Ninguna'}
-     - Rápida (<=20min): ${prefs.quick ? 'Sí' : 'No'}
-     - Saludable: ${prefs.healthy ? 'Sí' : 'No'}
-     - Sin horno: ${prefs.noOven ? 'Sí' : 'No'}
-     - Vegetariano: ${prefs.vegetarian ? 'Sí' : 'No'}
-
-  Responde solo con el JSON de las recetas.`;
+  const prompt = `Actúa como un chef creativo. Tengo estos ingredientes: ${ingredients.join(', ')}.
+  
+  REGLAS DE ORO:
+  1. Las recetas DEBEN basarse en estos ingredientes. No pidas ingredientes extra que no sean básicos (sal, aceite, agua).
+  2. Sé coherente: si solo tengo pan y tomate, sugiere pan con tomate o similares, no una lasaña.
+  3. Adapta a: ${prefs.servings} comensales, ${prefs.vegetarian ? 'dieta vegetariana' : 'cualquier dieta'}.
+  4. Considera estas exclusiones: ${prefs.allergies || 'ninguna'}.
+  5. Dificultad: fácil/media.
+  
+  Devuelve un array JSON de 2-3 objetos de receta.`;
 
   const response = await ai.models.generateContent({
     model,
@@ -110,5 +110,5 @@ export async function generateRecipes(ingredients: string[], prefs: Preferences)
     }
   });
 
-  return JSON.parse(response.text);
+  return JSON.parse(response.text || '[]');
 }
