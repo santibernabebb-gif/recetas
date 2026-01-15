@@ -47,18 +47,14 @@ const App: React.FC = () => {
   const handleAnalyze = async () => {
     if (images.length === 0) return;
     setLoading(true);
-    setLoadingMsg('Analizando fotos...');
+    setLoadingMsg('Analizando fotos con IA...');
     setError(null);
     try {
       const detected = await analyzeIngredients(images);
       setDetectedIngredients(detected);
       setEditingIngredients(true);
     } catch (err: any) {
-      if (err.message === "API_KEY_MISSING") {
-        setError("Falta configurar la clave API en Cloudflare/Entorno.");
-      } else {
-        setError('Error al analizar imágenes. Por favor, intenta de nuevo.');
-      }
+      setError(err.message || 'Error al conectar con Gemini. Revisa tu clave API.');
     } finally {
       setLoading(false);
     }
@@ -67,7 +63,7 @@ const App: React.FC = () => {
   const handleGenerate = async () => {
     if (detectedIngredients.length === 0) return;
     setLoading(true);
-    setLoadingMsg('Creando recetas...');
+    setLoadingMsg('Creando recetas únicas...');
     setError(null);
     try {
       const generated = await generateRecipes(detectedIngredients, preferences);
@@ -75,7 +71,7 @@ const App: React.FC = () => {
       saveToHistory(detectedIngredients, generated);
       setEditingIngredients(false);
     } catch (err: any) {
-      setError('Error al generar recetas. Intenta de nuevo.');
+      setError('No se pudieron generar las recetas. Intenta simplificar los ingredientes.');
     } finally {
       setLoading(false);
     }
@@ -118,9 +114,9 @@ const App: React.FC = () => {
           ) : recipes.length > 0 ? (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-slate-800">Recetas Sugeridas</h2>
+                <h2 className="text-2xl font-bold text-slate-800">Tus Recetas</h2>
                 <button onClick={resetAll} className="text-emerald-600 font-bold text-sm bg-emerald-50 px-3 py-1.5 rounded-lg">
-                  Nueva búsqueda
+                  Reiniciar
                 </button>
               </div>
               {recipes.map(recipe => (
@@ -135,7 +131,7 @@ const App: React.FC = () => {
                   {detectedIngredients.map((ing, idx) => (
                     <span key={idx} className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2">
                       {ing}
-                      <button onClick={() => removeIngredient(idx)} className="font-bold text-lg leading-none">×</button>
+                      <button onClick={() => removeIngredient(idx)} className="hover:text-emerald-900 font-bold">×</button>
                     </span>
                   ))}
                 </div>
@@ -144,64 +140,60 @@ const App: React.FC = () => {
                     type="text" 
                     value={newIngredient} 
                     onChange={(e) => setNewIngredient(e.target.value)}
-                    placeholder="Añadir..."
+                    placeholder="Añadir ingrediente..."
                     className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
                     onKeyDown={(e) => e.key === 'Enter' && addIngredient()}
                   />
-                  <button onClick={addIngredient} className="bg-slate-100 px-4 py-2 rounded-xl text-sm font-bold">Añadir</button>
+                  <button onClick={addIngredient} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold">OK</button>
                 </div>
               </div>
 
               <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
                 <h2 className="font-bold text-slate-800">Preferencias</h2>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="flex items-center gap-2 p-3 border rounded-xl cursor-pointer">
+                  <label className="flex items-center gap-2 p-3 border rounded-xl cursor-pointer hover:bg-slate-50">
                     <input type="checkbox" checked={preferences.vegetarian} onChange={(e) => setPreferences({ ...preferences, vegetarian: e.target.checked })} className="w-5 h-5 accent-emerald-600"/>
                     <span className="text-sm">Vegetariano</span>
                   </label>
                   <div className="flex flex-col gap-1 p-3 border rounded-xl">
-                    <span className="text-xs text-slate-500">Personas: {preferences.servings}</span>
-                    <input type="range" min="1" max="6" value={preferences.servings} onChange={(e) => setPreferences({ ...preferences, servings: parseInt(e.target.value) })} className="w-full accent-emerald-600"/>
+                    <span className="text-xs text-slate-500">Comensales: {preferences.servings}</span>
+                    <input type="range" min="1" max="8" value={preferences.servings} onChange={(e) => setPreferences({ ...preferences, servings: parseInt(e.target.value) })} className="w-full accent-emerald-600"/>
                   </div>
                 </div>
                 <input 
                   type="text" 
                   value={preferences.allergies} 
                   onChange={(e) => setPreferences({ ...preferences, allergies: e.target.value })}
-                  placeholder="Alergias (ej: gluten, lactosa...)"
+                  placeholder="Alergias o exclusiones..."
                   className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none"
                 />
               </div>
 
               <button onClick={handleGenerate} className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg active:scale-95 transition-all">
-                Generar Recetas
+                ¡Cocinar ahora!
               </button>
             </div>
           ) : (
             <div className="space-y-6">
               <div className="text-center space-y-2">
-                <h2 className="text-3xl font-extrabold text-slate-800">¿Qué cocinamos hoy?</h2>
-                <p className="text-slate-500">Sube fotos de tu nevera para empezar.</p>
+                <h2 className="text-3xl font-extrabold text-slate-800">¿Qué tienes hoy?</h2>
+                <p className="text-slate-500">Sube fotos de tu nevera y deja que la IA decida.</p>
               </div>
               <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
                 <ImagePicker images={images} setImages={setImages} />
                 <button onClick={handleAnalyze} disabled={images.length === 0} className="w-full mt-6 bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 transition-all">
-                  Detectar Ingredientes
+                  Analizar Nevera
                 </button>
               </div>
             </div>
           )}
 
           {error && (
-            <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 text-sm font-medium flex items-start gap-3">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+            <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 text-sm font-medium flex items-center gap-3">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
-              <div>
-                <p className="font-bold">¡Uy! Algo salió mal</p>
-                <p>{error}</p>
-                {error.includes("API_KEY") && <p className="mt-2 text-xs opacity-80">Recuerda configurar la variable API_KEY en el panel de Cloudflare Pages.</p>}
-              </div>
+              <p>{error}</p>
             </div>
           )}
         </div>
