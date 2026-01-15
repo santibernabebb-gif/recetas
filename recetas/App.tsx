@@ -24,7 +24,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const saved = localStorage.getItem('santisystems_history');
-    if (saved) setHistory(JSON.parse(saved));
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error("Error cargando historial", e);
+      }
+    }
   }, []);
 
   const saveToHistory = (ingredients: string[], generated: Recipe[]) => {
@@ -42,15 +48,19 @@ const App: React.FC = () => {
   const handleAnalyze = async () => {
     if (images.length === 0) return;
     setLoading(true);
-    setLoadingMsg('Santisystems analizando tus fotos...');
+    setLoadingMsg('Analizando con IA...');
     setError(null);
     try {
       const detected = await analyzeIngredients(images);
-      setDetectedIngredients(detected);
-      setEditingIngredients(true);
+      if (detected && detected.length > 0) {
+        setDetectedIngredients(detected);
+        setEditingIngredients(true);
+      } else {
+        setError("No se detectaron ingredientes claros. Intenta con otra foto.");
+      }
     } catch (err: any) {
-      console.error("Error en análisis:", err);
-      setError(err.message || 'Error al conectar con la IA. Asegúrate de tener conexión.');
+      console.error("Error completo de la API:", err);
+      setError(`Error: ${err.message || "No se pudo conectar con el servidor de IA"}`);
     } finally {
       setLoading(false);
     }
@@ -59,16 +69,20 @@ const App: React.FC = () => {
   const handleGenerate = async () => {
     if (detectedIngredients.length === 0) return;
     setLoading(true);
-    setLoadingMsg('Creando recetas exclusivas para ti...');
+    setLoadingMsg('Creando tus recetas...');
     setError(null);
     try {
       const generated = await generateRecipes(detectedIngredients, preferences);
-      setRecipes(generated);
-      saveToHistory(detectedIngredients, generated);
-      setEditingIngredients(false);
+      if (generated && generated.length > 0) {
+        setRecipes(generated);
+        saveToHistory(detectedIngredients, generated);
+        setEditingIngredients(false);
+      } else {
+        setError("La IA no pudo crear recetas con esos ingredientes.");
+      }
     } catch (err: any) {
       console.error("Error en generación:", err);
-      setError('No se pudieron generar las recetas en este momento.');
+      setError(`Error al generar: ${err.message || "Inténtalo de nuevo"}`);
     } finally {
       setLoading(false);
     }
@@ -92,10 +106,10 @@ const App: React.FC = () => {
               <p className="text-lg font-bold text-slate-700 animate-pulse">{loadingMsg}</p>
             </div>
           ) : recipes.length > 0 ? (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-slate-800">Tus Recetas</h2>
-                <button onClick={resetAll} className="text-emerald-600 font-bold text-sm bg-emerald-50 px-3 py-1.5 rounded-lg">
+                <button onClick={resetAll} className="text-emerald-600 font-bold text-sm bg-emerald-50 px-3 py-1.5 rounded-lg active:scale-95 transition-transform">
                   Nueva búsqueda
                 </button>
               </div>
@@ -104,14 +118,14 @@ const App: React.FC = () => {
               ))}
             </div>
           ) : editingIngredients ? (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in">
               <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
                 <h2 className="font-bold text-slate-800">Confirmar Ingredientes</h2>
                 <div className="flex flex-wrap gap-2">
                   {detectedIngredients.map((ing, idx) => (
                     <span key={idx} className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2">
                       {ing}
-                      <button onClick={() => setDetectedIngredients(prev => prev.filter((_, i) => i !== idx))} className="font-bold">×</button>
+                      <button onClick={() => setDetectedIngredients(prev => prev.filter((_, i) => i !== idx))} className="font-bold hover:text-emerald-900">×</button>
                     </span>
                   ))}
                 </div>
@@ -120,7 +134,7 @@ const App: React.FC = () => {
                     type="text" 
                     value={newIngredient} 
                     onChange={(e) => setNewIngredient(e.target.value)}
-                    placeholder="Añadir ingrediente manual..."
+                    placeholder="Añadir ingrediente..."
                     className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newIngredient.trim()) {
@@ -140,8 +154,8 @@ const App: React.FC = () => {
                     <span className="text-sm">Vegetariano</span>
                   </label>
                   <div className="p-3 border rounded-xl">
-                    <span className="text-xs text-slate-500 block">Comensales: {preferences.servings}</span>
-                    <input type="range" min="1" max="8" value={preferences.servings} onChange={(e) => setPreferences({ ...preferences, servings: parseInt(e.target.value) })} className="w-full accent-emerald-600 mt-1"/>
+                    <span className="text-xs text-slate-500 block mb-1">Comensales: {preferences.servings}</span>
+                    <input type="range" min="1" max="8" value={preferences.servings} onChange={(e) => setPreferences({ ...preferences, servings: parseInt(e.target.value) })} className="w-full accent-emerald-600"/>
                   </div>
                 </div>
               </div>
@@ -149,37 +163,60 @@ const App: React.FC = () => {
               <button onClick={handleGenerate} className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg transition-all active:scale-95">
                 Generar Recetas
               </button>
+              <button onClick={() => setEditingIngredients(false)} className="w-full text-slate-400 text-sm font-medium py-2">
+                Volver a las fotos
+              </button>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in">
               <div className="text-center space-y-2">
-                <h2 className="text-3xl font-extrabold text-slate-800">Santisystems</h2>
-                <p className="text-slate-500">¿Qué tienes hoy en la cocina?</p>
+                <h2 className="text-4xl font-black text-slate-800 tracking-tight">Santisystems</h2>
+                <p className="text-slate-500 font-medium">Cocinamos con lo que tienes</p>
               </div>
               <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
                 <ImagePicker images={images} setImages={setImages} />
-                <button onClick={handleAnalyze} disabled={images.length === 0} className="w-full mt-6 bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 transition-all">
-                  Detectar con IA
+                <button 
+                  onClick={handleAnalyze} 
+                  disabled={images.length === 0} 
+                  className="w-full mt-6 bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 disabled:grayscale transition-all active:scale-[0.98]"
+                >
+                  Identificar Ingredientes
                 </button>
               </div>
             </div>
           )}
 
           {error && (
-            <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 text-sm font-medium flex items-center gap-3">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 text-sm font-medium flex items-start gap-3 animate-in">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
-              <p>{error}</p>
+              <div className="space-y-1">
+                <p className="font-bold">Algo ha fallado</p>
+                <p className="text-xs opacity-80">{error}</p>
+              </div>
             </div>
           )}
         </div>
       ) : (
         <HistoryView 
           history={history} 
-          onSelect={(item) => { setDetectedIngredients(item.ingredients); setRecipes(item.recipes); setActiveTab('main'); }} 
-          onClear={() => {setHistory([]); localStorage.removeItem('santisystems_history');}} 
-          onDeleteItem={(id) => {const u = history.filter(i => i.id !== id); setHistory(u); localStorage.setItem('santisystems_history', JSON.stringify(u));}} 
+          onSelect={(item) => { 
+            setDetectedIngredients(item.ingredients); 
+            setRecipes(item.recipes); 
+            setActiveTab('main'); 
+          }} 
+          onClear={() => {
+            if(window.confirm('¿Borrar todo el historial?')) {
+              setHistory([]); 
+              localStorage.removeItem('santisystems_history');
+            }
+          }} 
+          onDeleteItem={(id) => {
+            const u = history.filter(i => i.id !== id); 
+            setHistory(u); 
+            localStorage.setItem('santisystems_history', JSON.stringify(u));
+          }} 
         />
       )}
     </Layout>

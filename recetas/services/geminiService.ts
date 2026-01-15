@@ -4,6 +4,7 @@ import { Recipe, Preferences } from "../types";
 
 function cleanJson(text: string): string {
   if (!text) return "";
+  // Elimina bloques de código markdown si los hay
   return text.replace(/```json/g, "").replace(/```/g, "").trim();
 }
 
@@ -16,6 +17,7 @@ function processImageData(base64: string) {
 }
 
 export async function analyzeIngredients(base64Images: string[]): Promise<string[]> {
+  // Inicialización directa tal cual se requiere en el entorno
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const imageParts = base64Images.map(base64 => {
@@ -23,7 +25,7 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
     return { inlineData: { data, mimeType } };
   });
 
-  const prompt = `Analiza estas fotos de comida. Lista los ingredientes visibles de forma genérica. Responde exclusivamente con un objeto JSON: {"ingredients": ["nombre1", "nombre2"]}`;
+  const prompt = "Analiza estas imágenes de cocina. Identifica todos los ingredientes individuales que veas. Responde exclusivamente en formato JSON con la estructura: {\"ingredients\": [\"nombre\", ...]}";
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -51,9 +53,9 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
 export async function generateRecipes(ingredients: string[], prefs: Preferences): Promise<Recipe[]> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const prompt = `Actúa como chef experto. Sugiere 2 o 3 recetas usando estos ingredientes: ${ingredients.join(', ')}. 
-  Comensales: ${prefs.servings}. Dieta: ${prefs.vegetarian ? 'Vegetariana' : 'Cualquiera'}. Alergias: ${prefs.allergies}.
-  Responde estrictamente con un array JSON de recetas siguiendo el formato solicitado.`;
+  const prompt = `Como chef profesional de Santisystems, crea 3 recetas creativas usando estos ingredientes: ${ingredients.join(', ')}. 
+  Para ${prefs.servings} personas. Dieta: ${prefs.vegetarian ? 'Vegetariana' : 'Libre'}. Alergias: ${prefs.allergies || 'Ninguna'}.
+  Asegúrate de que los pasos sean claros y añade un tip de cocina útil.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
