@@ -24,24 +24,43 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const checkKey = async () => {
-      // @ts-ignore
-      const selected = await window.aistudio?.hasSelectedApiKey();
+    const checkInitialKey = async () => {
+      // 1. Priorizar variable de entorno ya inyectada
       const envKey = process.env.API_KEY;
-      if (!selected && !envKey) {
-        setHasApiKey(false);
+      if (envKey && envKey.length > 5) {
+        setHasApiKey(true);
+        return;
+      }
+
+      // 2. Si no hay env, revisar si el usuario ya seleccionó una en el diálogo oficial
+      // @ts-ignore
+      if (window.aistudio?.hasSelectedApiKey) {
+        // @ts-ignore
+        const selected = await window.aistudio.hasSelectedApiKey();
+        if (!selected) {
+          setHasApiKey(false);
+        }
       }
     };
-    checkKey();
+    checkInitialKey();
 
     const saved = localStorage.getItem('santisystems_history');
     if (saved) setHistory(JSON.parse(saved));
   }, []);
 
   const handleOpenKeySelector = async () => {
-    // @ts-ignore
-    await window.aistudio?.openSelectKey();
-    setHasApiKey(true);
+    try {
+      // @ts-ignore
+      if (window.aistudio?.openSelectKey) {
+        // @ts-ignore
+        await window.aistudio.openSelectKey();
+      }
+      // CRÍTICO: Según reglas, asumimos éxito inmediatamente para evitar bloqueos por race conditions
+      setHasApiKey(true);
+    } catch (e) {
+      console.error("Error abriendo el selector de claves:", e);
+      setHasApiKey(true); // Intentar continuar de todos modos
+    }
   };
 
   const saveToHistory = (ingredients: string[], generated: Recipe[]) => {
@@ -66,10 +85,11 @@ const App: React.FC = () => {
       setDetectedIngredients(detected);
       setEditingIngredients(true);
     } catch (err: any) {
-      if (err.message?.includes("API Key")) {
+      // Si el error indica falta de clave, mostrar pantalla de configuración
+      if (err.message?.includes("API Key") || err.message?.includes("403") || err.message?.includes("not found")) {
         setHasApiKey(false);
       } else {
-        setError(err.message || 'Error al conectar con la IA. Inténtalo de nuevo.');
+        setError(err.message || 'Error al conectar con la IA. Revisa tu conexión.');
       }
     } finally {
       setLoading(false);
@@ -87,7 +107,11 @@ const App: React.FC = () => {
       saveToHistory(detectedIngredients, generated);
       setEditingIngredients(false);
     } catch (err: any) {
-      setError('No se pudieron generar las recetas. Revisa tu conexión.');
+      if (err.message?.includes("API Key")) {
+        setHasApiKey(false);
+      } else {
+        setError('No se pudieron generar las recetas. Prueba con menos ingredientes.');
+      }
     } finally {
       setLoading(false);
     }
@@ -112,16 +136,24 @@ const App: React.FC = () => {
           </div>
           <div className="space-y-2">
             <h1 className="text-2xl font-bold text-slate-800">Acceso Requerido</h1>
-            <p className="text-slate-500 text-sm">Para que la IA de Santisystems cocine por ti, necesitas configurar tu clave API.</p>
+            <p className="text-slate-500 text-sm">No hemos detectado una clave API activa. Necesitas configurar una para usar la IA.</p>
           </div>
-          <button 
-            onClick={handleOpenKeySelector}
-            className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all active:scale-95"
-          >
-            Configurar Clave API
-          </button>
-          <p className="text-xs text-slate-400">
-            Debes seleccionar un proyecto con facturación activa en <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline">Google AI Studio</a>.
+          <div className="space-y-3">
+            <button 
+              onClick={handleOpenKeySelector}
+              className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all active:scale-95"
+            >
+              Configurar Clave API
+            </button>
+            <button 
+              onClick={() => setHasApiKey(true)}
+              className="w-full text-slate-400 text-sm font-medium hover:text-slate-600 underline"
+            >
+              Ya la tengo puesta, intentar de nuevo
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400 leading-tight">
+            Asegúrate de haber configurado <strong>API_KEY</strong> en Cloudflare Pages o de haber seleccionado un proyecto con facturación en <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline">Google AI Studio</a>.
           </p>
         </div>
       </div>
@@ -168,7 +200,12 @@ const App: React.FC = () => {
                     onChange={(e) => setNewIngredient(e.target.value)}
                     placeholder="Añadir manual..."
                     className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-                    onKeyDown={(e) => e.key === 'Enter' && (setDetectedIngredients([...detectedIngredients, newIngredient]), setNewIngredient(''))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newIngredient.trim()) {
+                        setDetectedIngredients([...detectedIngredients, newIngredient.trim()]);
+                        setNewIngredient('');
+                      }
+                    }}
                   />
                 </div>
               </div>
@@ -213,7 +250,12 @@ const App: React.FC = () => {
           )}
         </div>
       ) : (
-        <HistoryView history={history} onSelect={(item) => { setDetectedIngredients(item.ingredients); setRecipes(item.recipes); setActiveTab('main'); }} onClear={() => {setHistory([]); localStorage.removeItem('santisystems_history');}} onDeleteItem={(id) => {const u = history.filter(i => i.id !== id); setHistory(u); localStorage.setItem('santisystems_history', JSON.stringify(u));}} />
+        <HistoryView 
+          history={history} 
+          onSelect={(item) => { setDetectedIngredients(item.ingredients); setRecipes(item.recipes); setActiveTab('main'); }} 
+          onClear={() => {setHistory([]); localStorage.removeItem('santisystems_history');}} 
+          onDeleteItem={(id) => {const u = history.filter(i => i.id !== id); setHistory(u); localStorage.setItem('santisystems_history', JSON.stringify(u));}} 
+        />
       )}
     </Layout>
   );
