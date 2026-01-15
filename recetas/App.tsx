@@ -8,6 +8,7 @@ import { analyzeIngredients, generateRecipes } from './services/geminiService';
 import { Recipe, Preferences, HistoryItem } from './types';
 
 const App: React.FC = () => {
+  // Empezamos asumiendo que la clave está presente para no bloquear al usuario
   const [hasApiKey, setHasApiKey] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'main' | 'history'>('main');
   const [images, setImages] = useState<string[]>([]);
@@ -24,43 +25,18 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const checkInitialKey = async () => {
-      // 1. Priorizar variable de entorno ya inyectada
-      const envKey = process.env.API_KEY;
-      if (envKey && envKey.length > 5) {
-        setHasApiKey(true);
-        return;
-      }
-
-      // 2. Si no hay env, revisar si el usuario ya seleccionó una en el diálogo oficial
-      // @ts-ignore
-      if (window.aistudio?.hasSelectedApiKey) {
-        // @ts-ignore
-        const selected = await window.aistudio.hasSelectedApiKey();
-        if (!selected) {
-          setHasApiKey(false);
-        }
-      }
-    };
-    checkInitialKey();
-
     const saved = localStorage.getItem('santisystems_history');
     if (saved) setHistory(JSON.parse(saved));
   }, []);
 
   const handleOpenKeySelector = async () => {
-    try {
+    // @ts-ignore
+    if (window.aistudio?.openSelectKey) {
       // @ts-ignore
-      if (window.aistudio?.openSelectKey) {
-        // @ts-ignore
-        await window.aistudio.openSelectKey();
-      }
-      // CRÍTICO: Según reglas, asumimos éxito inmediatamente para evitar bloqueos por race conditions
-      setHasApiKey(true);
-    } catch (e) {
-      console.error("Error abriendo el selector de claves:", e);
-      setHasApiKey(true); // Intentar continuar de todos modos
+      await window.aistudio.openSelectKey();
     }
+    setHasApiKey(true);
+    setError(null);
   };
 
   const saveToHistory = (ingredients: string[], generated: Recipe[]) => {
@@ -85,8 +61,9 @@ const App: React.FC = () => {
       setDetectedIngredients(detected);
       setEditingIngredients(true);
     } catch (err: any) {
-      // Si el error indica falta de clave, mostrar pantalla de configuración
-      if (err.message?.includes("API Key") || err.message?.includes("403") || err.message?.includes("not found")) {
+      console.error("Error capturado:", err);
+      // Solo si el error es explícitamente de falta de clave, mostramos el selector
+      if (err.message?.toLowerCase().includes("api key") || err.message?.includes("403")) {
         setHasApiKey(false);
       } else {
         setError(err.message || 'Error al conectar con la IA. Revisa tu conexión.');
@@ -107,10 +84,10 @@ const App: React.FC = () => {
       saveToHistory(detectedIngredients, generated);
       setEditingIngredients(false);
     } catch (err: any) {
-      if (err.message?.includes("API Key")) {
+      if (err.message?.toLowerCase().includes("api key")) {
         setHasApiKey(false);
       } else {
-        setError('No se pudieron generar las recetas. Prueba con menos ingredientes.');
+        setError('No se pudieron generar las recetas. Prueba de nuevo.');
       }
     } finally {
       setLoading(false);
@@ -125,44 +102,29 @@ const App: React.FC = () => {
     setError(null);
   };
 
-  if (!hasApiKey) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full text-center space-y-6 animate-in">
-          <div className="w-20 h-20 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto text-emerald-600">
+  return (
+    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+      {!hasApiKey ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center space-y-6 animate-in">
+          <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
           <div className="space-y-2">
-            <h1 className="text-2xl font-bold text-slate-800">Acceso Requerido</h1>
-            <p className="text-slate-500 text-sm">No hemos detectado una clave API activa. Necesitas configurar una para usar la IA.</p>
+            <h2 className="text-xl font-bold text-slate-800">Clave API necesaria</h2>
+            <p className="text-sm text-slate-500 max-w-xs mx-auto">
+              Aunque la clave esté configurada en el entorno, el navegador requiere una confirmación manual o una clave válida de Google AI Studio.
+            </p>
           </div>
-          <div className="space-y-3">
-            <button 
-              onClick={handleOpenKeySelector}
-              className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all active:scale-95"
-            >
-              Configurar Clave API
-            </button>
-            <button 
-              onClick={() => setHasApiKey(true)}
-              className="w-full text-slate-400 text-sm font-medium hover:text-slate-600 underline"
-            >
-              Ya la tengo puesta, intentar de nuevo
-            </button>
-          </div>
-          <p className="text-[10px] text-slate-400 leading-tight">
-            Asegúrate de haber configurado <strong>API_KEY</strong> en Cloudflare Pages o de haber seleccionado un proyecto con facturación en <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline">Google AI Studio</a>.
-          </p>
+          <button 
+            onClick={handleOpenKeySelector}
+            className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg hover:bg-emerald-700 transition-all"
+          >
+            Configurar Clave Ahora
+          </button>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {activeTab === 'main' ? (
+      ) : activeTab === 'main' ? (
         <div className="space-y-8 animate-in">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-6">
@@ -211,14 +173,14 @@ const App: React.FC = () => {
               </div>
 
               <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                <h2 className="font-bold text-slate-800">Filtros</h2>
+                <h2 className="font-bold text-slate-800">Preferencias</h2>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex items-center gap-2 p-3 border rounded-xl cursor-pointer">
                     <input type="checkbox" checked={preferences.vegetarian} onChange={(e) => setPreferences({ ...preferences, vegetarian: e.target.checked })} className="w-5 h-5 accent-emerald-600"/>
                     <span className="text-sm">Vegetariano</span>
                   </label>
                   <div className="p-3 border rounded-xl">
-                    <span className="text-xs text-slate-500 block">Platos para: {preferences.servings}</span>
+                    <span className="text-xs text-slate-500 block">Comensales: {preferences.servings}</span>
                     <input type="range" min="1" max="8" value={preferences.servings} onChange={(e) => setPreferences({ ...preferences, servings: parseInt(e.target.value) })} className="w-full accent-emerald-600 mt-1"/>
                   </div>
                 </div>
