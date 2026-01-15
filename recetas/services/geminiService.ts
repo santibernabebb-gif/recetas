@@ -16,9 +16,9 @@ function processImageData(base64: string) {
 }
 
 export async function analyzeIngredients(base64Images: string[]): Promise<string[]> {
-  // Inicialización directa según directrices
+  // Crear instancia justo antes de la llamada para asegurar que toma la API_KEY del entorno
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const model = 'gemini-3-flash-preview';
+  const modelName = 'gemini-3-flash-preview';
   
   const imageParts = base64Images.map(base64 => {
     const { mimeType, data } = processImageData(base64);
@@ -27,88 +27,78 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
 
   const prompt = `Analiza estas fotos de comida. Lista los ingredientes visibles de forma genérica. Responde exclusivamente con un objeto JSON: {"ingredients": ["nombre1", "nombre2"]}`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: { parts: [...imageParts, { text: prompt }] },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            ingredients: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            }
-          },
-          required: ["ingredients"]
-        }
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: { parts: [...imageParts, { text: prompt }] },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          ingredients: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        },
+        required: ["ingredients"]
       }
-    });
+    }
+  });
 
-    const text = response.text;
-    const data = JSON.parse(cleanJson(text));
-    return data.ingredients || [];
-  } catch (error: any) {
-    console.error("Error en Gemini API:", error);
-    throw error;
-  }
+  const text = response.text;
+  const data = JSON.parse(cleanJson(text));
+  return data.ingredients || [];
 }
 
 export async function generateRecipes(ingredients: string[], prefs: Preferences): Promise<Recipe[]> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const model = 'gemini-3-flash-preview';
+  const modelName = 'gemini-3-flash-preview';
   
   const prompt = `Actúa como chef experto. Sugiere 2 o 3 recetas usando estos ingredientes: ${ingredients.join(', ')}. 
   Comensales: ${prefs.servings}. Dieta: ${prefs.vegetarian ? 'Vegetariana' : 'Cualquiera'}. Alergias: ${prefs.allergies}.
-  Responde estrictamente con un array JSON de recetas.`;
+  Responde estrictamente con un array JSON de recetas siguiendo el formato solicitado.`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              name: { type: Type.STRING },
-              time: { type: Type.STRING },
-              difficulty: { type: Type.STRING, enum: ["fácil", "media"] },
-              servings: { type: Type.NUMBER },
-              ingredients: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    hasIt: { type: Type.BOOLEAN }
-                  },
-                  required: ["name", "hasIt"]
-                }
-              },
-              missingIngredients: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              steps: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              },
-              tips: { type: Type.STRING }
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            id: { type: Type.STRING },
+            name: { type: Type.STRING },
+            time: { type: Type.STRING },
+            difficulty: { type: Type.STRING, enum: ["fácil", "media"] },
+            servings: { type: Type.NUMBER },
+            ingredients: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  hasIt: { type: Type.BOOLEAN }
+                },
+                required: ["name", "hasIt"]
+              }
             },
-            required: ["id", "name", "time", "difficulty", "servings", "ingredients", "missingIngredients", "steps"]
-          }
+            missingIngredients: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            steps: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            tips: { type: Type.STRING }
+          },
+          required: ["id", "name", "time", "difficulty", "servings", "ingredients", "missingIngredients", "steps"]
         }
       }
-    });
+    }
+  });
 
-    return JSON.parse(cleanJson(response.text));
-  } catch (error) {
-    console.error("Error en Gemini API:", error);
-    throw error;
-  }
+  return JSON.parse(cleanJson(response.text));
 }
