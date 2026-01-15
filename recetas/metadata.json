@@ -1,0 +1,7 @@
+{
+  "name": "Santisystems - Recetas",
+  "description": "Una aplicación inteligente que detecta ingredientes mediante fotos de tu nevera y te sugiere recetas personalizadas, fáciles y deliciosas.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
