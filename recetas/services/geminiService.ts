@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { Recipe, Preferences } from "../types";
 
 // Helper to extract clean base64 data and mimeType from data URL
@@ -11,9 +11,30 @@ function processImageData(base64: string) {
   return { mimeType, data };
 }
 
-// Follow guidelines: initialize with named parameter directly from process.env.API_KEY
+// Named parameter initialization directly from environment
 function getAiClient() {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("Falta VITE_API_KEY en el entorno. Verifica la configuración en Cloudflare.");
+  }
+  return new GoogleGenAI({ apiKey });
+}
+
+/**
+ * Utility to retry API calls on 503 Overloaded errors
+ */
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const isOverloaded = error?.message?.includes('503') || error?.status === 503;
+    if (isOverloaded && retries > 0) {
+      console.warn(`Modelo sobrecargado. Reintentando en ${delay}ms... (${retries} intentos restantes)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return withRetry(fn, retries - 1, delay * 2);
+    }
+    throw error;
+  }
 }
 
 export async function analyzeIngredients(base64Images: string[]): Promise<string[]> {
@@ -26,7 +47,8 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
 
   const prompt = "Analiza estas imágenes de cocina e identifica ingredientes. Responde exclusivamente JSON: {\"ingredients\": [\"nombre\", ...]}";
 
-  const response = await ai.models.generateContent({
+  // Fixed: Explicitly typed response as GenerateContentResponse to fix property access on 'unknown'
+  const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: { parts: [...imageParts, { text: prompt }] },
     config: {
@@ -42,9 +64,8 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
         required: ["ingredients"]
       }
     }
-  });
+  }));
 
-  // Correct: access .text property directly (not as a function) and trim it
   const text = response.text?.trim() || "{}";
   const data = JSON.parse(text);
   return data.ingredients || [];
@@ -53,11 +74,13 @@ export async function analyzeIngredients(base64Images: string[]): Promise<string
 export async function generateRecipes(ingredients: string[], prefs: Preferences): Promise<Recipe[]> {
   const ai = getAiClient();
   
-  const prompt = `Como chef profesional, crea 3 recetas usando estos ingredientes: ${ingredients.join(', ')}. 
-  Comensales: ${prefs.servings}. Dieta: ${prefs.vegetarian ? 'Vegetariana' : 'Libre'}. Alergias: ${prefs.allergies || 'Ninguna'}.`;
+  const prompt = `Como chef profesional de Santisystems, crea 3 recetas creativas usando estos ingredientes: ${ingredients.join(', ')}. 
+  Comensales: ${prefs.servings}. Dieta: ${prefs.vegetarian ? 'Vegetariana' : 'Libre'}. Alergias: ${prefs.allergies || 'Ninguna'}.
+  Asegúrate de que los pasos sean detallados y añade un tip de cocina único.`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+  // Fixed: Explicitly typed response as GenerateContentResponse to fix property access on 'unknown'
+  const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -96,9 +119,8 @@ export async function generateRecipes(ingredients: string[], prefs: Preferences)
         }
       }
     }
-  });
+  }));
 
-  // Correct: access .text property directly and trim it
   const text = response.text?.trim() || "[]";
   return JSON.parse(text);
 }

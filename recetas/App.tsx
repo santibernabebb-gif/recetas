@@ -46,7 +46,7 @@ const App: React.FC = () => {
   const handleAnalyze = async () => {
     if (images.length === 0) return;
     setLoading(true);
-    setLoadingMsg('Analizando con IA...');
+    setLoadingMsg('Analizando ingredientes...');
     setError(null);
     try {
       const detected = await analyzeIngredients(images);
@@ -54,10 +54,13 @@ const App: React.FC = () => {
         setDetectedIngredients(detected);
         setEditingIngredients(true);
       } else {
-        setError("No se detectaron ingredientes claros.");
+        setError("No pude detectar ingredientes claros en la imagen.");
       }
     } catch (err: any) {
-      setError(err.message || "Error al conectar con la IA");
+      const msg = err.message?.includes('503') 
+        ? "El servidor de IA está muy ocupado en este momento. Por favor, inténtalo de nuevo en unos segundos." 
+        : (err.message || "Error al conectar con la IA");
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -66,7 +69,7 @@ const App: React.FC = () => {
   const handleGenerate = async () => {
     if (detectedIngredients.length === 0) return;
     setLoading(true);
-    setLoadingMsg('Creando tus recetas...');
+    setLoadingMsg('Cocinando tus recetas...');
     setError(null);
     try {
       const generated = await generateRecipes(detectedIngredients, preferences);
@@ -74,7 +77,10 @@ const App: React.FC = () => {
       saveToHistory(detectedIngredients, generated);
       setEditingIngredients(false);
     } catch (err: any) {
-      setError(err.message || "Error al generar recetas");
+      const msg = err.message?.includes('503') 
+        ? "La IA está saturada creando recetas. Estamos reintentando, pero si el error persiste, espera un momento." 
+        : (err.message || "Error al generar recetas");
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -95,7 +101,7 @@ const App: React.FC = () => {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-6">
               <div className="w-16 h-16 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
-              <p className="text-lg font-bold text-slate-700 animate-pulse">{loadingMsg}</p>
+              <p className="text-lg font-bold text-slate-700 animate-pulse text-center px-6">{loadingMsg}</p>
             </div>
           ) : recipes.length > 0 ? (
             <div className="space-y-6 animate-in">
@@ -167,6 +173,9 @@ const App: React.FC = () => {
               <button onClick={handleGenerate} className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg transition-all active:scale-95">
                 Generar Recetas
               </button>
+              <button onClick={() => setEditingIngredients(false)} className="w-full text-slate-400 text-sm font-medium py-2">
+                Volver a las fotos
+              </button>
             </div>
           ) : (
             <div className="space-y-6 animate-in">
@@ -192,7 +201,16 @@ const App: React.FC = () => {
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
-              <p>{error}</p>
+              <div className="space-y-1">
+                <p className="font-bold">Aviso de la IA</p>
+                <p className="text-xs opacity-90">{error}</p>
+                <button 
+                  onClick={() => editingIngredients ? handleGenerate() : handleAnalyze()}
+                  className="mt-2 text-xs bg-red-600 text-white px-3 py-1 rounded-lg font-bold"
+                >
+                  Reintentar manualmente
+                </button>
+              </div>
             </div>
           )}
         </div>
