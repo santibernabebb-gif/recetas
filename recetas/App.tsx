@@ -25,11 +25,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const saved = localStorage.getItem('santisystems_history');
     if (saved) {
-      try {
-        setHistory(JSON.parse(saved));
-      } catch (e) {
-        console.error("Error cargando historial", e);
-      }
+      try { setHistory(JSON.parse(saved)); } catch (e) { console.error(e); }
     }
   }, []);
 
@@ -40,9 +36,11 @@ const App: React.FC = () => {
       ingredients,
       recipes: generated
     };
-    setHistory(prev => [newItem, ...prev].slice(0, 10));
-    const savedHistory = JSON.parse(localStorage.getItem('santisystems_history') || '[]');
-    localStorage.setItem('santisystems_history', JSON.stringify([newItem, ...savedHistory].slice(0, 10)));
+    setHistory(prev => {
+      const updated = [newItem, ...prev].slice(0, 10);
+      localStorage.setItem('santisystems_history', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const handleAnalyze = async () => {
@@ -56,11 +54,10 @@ const App: React.FC = () => {
         setDetectedIngredients(detected);
         setEditingIngredients(true);
       } else {
-        setError("No se detectaron ingredientes claros. Intenta con otra foto.");
+        setError("No se detectaron ingredientes claros.");
       }
     } catch (err: any) {
-      console.error("Error completo de la API:", err);
-      setError(`Error: ${err.message || "No se pudo conectar con el servidor de IA"}`);
+      setError(err.message || "Error al conectar con la IA");
     } finally {
       setLoading(false);
     }
@@ -73,16 +70,11 @@ const App: React.FC = () => {
     setError(null);
     try {
       const generated = await generateRecipes(detectedIngredients, preferences);
-      if (generated && generated.length > 0) {
-        setRecipes(generated);
-        saveToHistory(detectedIngredients, generated);
-        setEditingIngredients(false);
-      } else {
-        setError("La IA no pudo crear recetas con esos ingredientes.");
-      }
+      setRecipes(generated);
+      saveToHistory(detectedIngredients, generated);
+      setEditingIngredients(false);
     } catch (err: any) {
-      console.error("Error en generación:", err);
-      setError(`Error al generar: ${err.message || "Inténtalo de nuevo"}`);
+      setError(err.message || "Error al generar recetas");
     } finally {
       setLoading(false);
     }
@@ -125,7 +117,7 @@ const App: React.FC = () => {
                   {detectedIngredients.map((ing, idx) => (
                     <span key={idx} className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2">
                       {ing}
-                      <button onClick={() => setDetectedIngredients(prev => prev.filter((_, i) => i !== idx))} className="font-bold hover:text-emerald-900">×</button>
+                      <button onClick={() => setDetectedIngredients(prev => prev.filter((_, i) => i !== idx))} className="font-bold">×</button>
                     </span>
                   ))}
                 </div>
@@ -175,9 +167,6 @@ const App: React.FC = () => {
               <button onClick={handleGenerate} className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg transition-all active:scale-95">
                 Generar Recetas
               </button>
-              <button onClick={() => setEditingIngredients(false)} className="w-full text-slate-400 text-sm font-medium py-2">
-                Volver a las fotos
-              </button>
             </div>
           ) : (
             <div className="space-y-6 animate-in">
@@ -190,7 +179,7 @@ const App: React.FC = () => {
                 <button 
                   onClick={handleAnalyze} 
                   disabled={images.length === 0} 
-                  className="w-full mt-6 bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 disabled:grayscale transition-all active:scale-[0.98]"
+                  className="w-full mt-6 bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg disabled:opacity-50 transition-all active:scale-[0.98]"
                 >
                   Identificar Ingredientes
                 </button>
@@ -203,34 +192,16 @@ const App: React.FC = () => {
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mt-0.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
-              <div className="space-y-1">
-                <p className="font-bold">Algo ha fallado</p>
-                <p className="text-xs opacity-80">{error}</p>
-              </div>
+              <p>{error}</p>
             </div>
           )}
         </div>
       ) : (
         <HistoryView 
           history={history} 
-          onSelect={(item) => { 
-            setDetectedIngredients(item.ingredients); 
-            setRecipes(item.recipes); 
-            setActiveTab('main'); 
-          }} 
-          onClear={() => {
-            if(window.confirm('¿Borrar todo el historial?')) {
-              setHistory([]); 
-              localStorage.removeItem('santisystems_history');
-            }
-          }} 
-          onDeleteItem={(id) => {
-            setHistory(prev => {
-              const u = prev.filter(i => i.id !== id);
-              localStorage.setItem('santisystems_history', JSON.stringify(u));
-              return u;
-            });
-          }} 
+          onSelect={(item) => { setDetectedIngredients(item.ingredients); setRecipes(item.recipes); setActiveTab('main'); }} 
+          onClear={() => { if(confirm('¿Borrar historial?')) setHistory([]); }} 
+          onDeleteItem={(id) => setHistory(prev => prev.filter(i => i.id !== id))} 
         />
       )}
     </Layout>
